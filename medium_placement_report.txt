@@ -1,0 +1,48 @@
+
+PLACEMENT ANALYSIS BY MEDIUM (ENGLISH vs HINDI)
+================================================================================
+
+OVERALL STATISTICS:
+- Total Students: 3855
+- Placed Students: 882
+- Overall Placement Rate: 22.88%
+
+ENGLISH MEDIUM:
+- Total Students: 792
+- Placed Students: 187
+- Placement Rate: 23.61%
+- Average CGPA: 7.05
+- Average Job Offers: 0.30
+- Max Job Offers: 4
+
+HINDI MEDIUM:
+- Total Students: 383
+- Placed Students: 61
+- Placement Rate: 15.93%
+- Average CGPA: 6.85
+- Average Job Offers: 0.21
+- Max Job Offers: 4
+
+TOP 10 PLACED STUDENTS - ENGLISH MEDIUM:
+1. Mohammad Khan: 4 offers, CGPA: 6.20
+2. Vaibhav Pateriya: 4 offers, CGPA: 7.64
+3. Ankush Sharma: 4 offers, CGPA: 7.73
+4. Kapil Sisodiya: 3 offers, CGPA: 7.68
+5. Pranjal Pandey: 3 offers, CGPA: 7.01
+6. VISHAL PRAJAPATI: 3 offers, CGPA: 6.89
+7. Muskan Tiwari: 3 offers, CGPA: 8.07
+8. Naresh Kose: 3 offers, CGPA: 7.64
+9. Nitish Kumar: 3 offers, CGPA: 8.19
+10. PRINCE PANDEY: 3 offers, CGPA: 8.48
+
+TOP 10 PLACED STUDENTS - HINDI MEDIUM:
+1. Deepu Kushwaha: 4 offers, CGPA: 7.34
+2. Arjun Lodha: 3 offers, CGPA: 7.33
+3. Kunal Raut: 3 offers, CGPA: 8.53
+4. Satendra Kushwaha: 3 offers, CGPA: 7.76
+5. Ashish Mishra: 2 offers, CGPA: 7.94
+6. Ashish Sahu: 2 offers, CGPA: 7.46
+7. Deepak Singh: 2 offers, CGPA: 6.17
+8. Dipesh Shah: 2 offers, CGPA: 5.37
+9. Sameer Manua: 2 offers, CGPA: 7.20
+10. Sujeet Kumar: 2 offers, CGPA: 6.28
