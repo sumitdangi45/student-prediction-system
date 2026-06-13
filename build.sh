@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "Building with pip..."
+echo "Installing dependencies..."
 pip install --upgrade pip
-pip install --only-binary :all: -r requirements.txt
+
+# Install with no cache to force fresh download
+pip install --no-cache-dir -r requirements.txt
 
 echo "Build completed successfully!"
+
 
