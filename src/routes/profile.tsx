@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft, Save, User, Mail, Calendar, Upload, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -17,7 +18,8 @@ export const Route = createFileRoute("/profile")({
 
 function ProfilePage() {
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
+  const { loading: isProtecting } = useProtectedRoute();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -54,7 +56,8 @@ function ProfilePage() {
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:5000/api/auth/profile", {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/auth/profile`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -135,7 +138,15 @@ function ProfilePage() {
 
     setSaving(true);
     try {
-      const response = await fetch("http://localhost:5000/api/auth/update-profile", {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      
+      console.log("📤 Sending profile update...", {
+        name: formData.name,
+        hasPhoto: !!photoPreview,
+        photoSize: photoPreview ? photoPreview.length : 0
+      });
+      
+      const response = await fetch(`${API_URL}/api/auth/update-profile`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -148,15 +159,20 @@ function ProfilePage() {
       });
 
       const data = await response.json();
+      console.log("📥 Response:", data);
 
-      if (data.status === "success") {
+      if (response.ok && data.status === "success") {
+        // Use the photo that was just saved
+        const photoToStore = photoPreview || formData.photo;
+        
         // Update localStorage with new user data including photo
         const updatedUser = { 
           ...user, 
           name: formData.name,
-          photo: photoPreview || formData.photo,
+          photo: photoToStore,
         };
         localStorage.setItem("user", JSON.stringify(updatedUser));
+        sessionStorage.setItem("user", JSON.stringify(updatedUser));
         
         // Trigger a custom event to update AuthContext
         window.dispatchEvent(new CustomEvent('userProfileUpdated', { detail: updatedUser }));
@@ -164,11 +180,12 @@ function ProfilePage() {
         toast.success("Profile updated successfully!");
         setPhotoFile(null);
       } else {
+        console.error("❌ Error response:", data);
         toast.error(data.message || "Failed to update profile");
       }
     } catch (err) {
-      toast.error("Failed to update profile");
-      console.error(err);
+      console.error("❌ Network error:", err);
+      toast.error("Failed to update profile - check connection");
     } finally {
       setSaving(false);
     }

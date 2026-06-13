@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
 interface User {
   id: string;
@@ -17,16 +18,22 @@ interface AuthContextType {
   isAuthenticated: boolean;
   logout: () => void;
   setUser: (user: User | null) => void;
+  refreshAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zckmfdcdfemnkfjfuujb.supabase.co';
+const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_0x82kaK8XFyTmK5_dm8e_w_ZOAluzWP';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize from localStorage and verify with backend
+  // Initialize from Supabase (not localStorage)
   useEffect(() => {
     // Check if we're on client side
     if (typeof window === 'undefined') {
@@ -36,27 +43,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        const storedToken = localStorage.getItem('token');
-        const storedUser = localStorage.getItem('user');
+        // Read token from sessionStorage (session-based)
+        // But also check localStorage as fallback for persistence across page reloads
+        let storedToken = sessionStorage.getItem('token');
+        if (!storedToken) {
+          storedToken = localStorage.getItem('token');
+        }
         
-        console.log('🔍 AuthContext: Initializing auth...', { hasToken: !!storedToken, hasUser: !!storedUser });
+        console.log('🔍 AuthContext: Initializing auth...', { hasToken: !!storedToken });
         
-        if (storedToken && storedUser) {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        
+        if (storedToken) {
           try {
-            // First, try to use stored user data
-            const userData = JSON.parse(storedUser);
-            console.log('📦 AuthContext: Using stored user data:', userData);
+            // Verify token with backend
+            console.log('🔄 AuthContext: Verifying token with backend...', { API_URL });
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
             
-            // Then verify token with backend
-            console.log('🔄 AuthContext: Verifying token with backend...');
-            const response = await fetch('http://localhost:5000/api/auth/me', {
+            const response = await fetch(`${API_URL}/api/auth/me`, {
               method: 'GET',
               headers: {
                 'Authorization': `Bearer ${storedToken}`,
                 'Content-Type': 'application/json',
               },
+              signal: controller.signal,
             });
-
+            
+            clearTimeout(timeout);
             console.log('📡 AuthContext: Backend response status:', response.status);
 
             if (response.ok) {
@@ -68,25 +82,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(data.user);
                 console.log('✅ AuthContext: User set from backend verification');
               } else {
-                // Token is invalid, clear localStorage
+                // Token is invalid, clear storage
                 console.warn('⚠️ AuthContext: Invalid response from backend');
+                sessionStorage.removeItem('token');
+                sessionStorage.removeItem('user');
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
               }
+            } else if (response.status === 401) {
+              // Unauthorized - token expired
+              console.warn('⚠️ AuthContext: Token expired (401)');
+              sessionStorage.removeItem('token');
+              sessionStorage.removeItem('user');
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
             } else {
-              // Token verification failed, but use stored user data anyway
-              console.warn('⚠️ AuthContext: Backend verification failed, using stored data');
+              // Other error - keep token but try to restore user
+              console.warn('⚠️ AuthContext: Backend error (status:', response.status + '), keeping token');
               setToken(storedToken);
-              setUser(userData);
+              
+              // Try to restore user from storage
+              const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+              if (storedUser) {
+                try {
+                  setUser(JSON.parse(storedUser));
+                  console.log('ℹ️ AuthContext: Restored user from storage');
+                } catch (e) {
+                  console.error('Failed to parse stored user');
+                }
+              }
             }
           } catch (err) {
             console.error('❌ AuthContext: Token verification error:', err);
-            // If backend verification fails, still use stored data
+            // On network error, keep the token AND try to restore user
             setToken(storedToken);
-            setUser(JSON.parse(storedUser));
+            
+            // Try to restore user from storage
+            const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+            if (storedUser) {
+              try {
+                setUser(JSON.parse(storedUser));
+                console.log('ℹ️ AuthContext: Restored user from storage (network issue)');
+              } catch (e) {
+                console.error('Failed to parse stored user');
+              }
+            }
+            
+            console.log('ℹ️ AuthContext: Kept token & user despite verification error');
           }
         } else {
-          console.log('ℹ️ AuthContext: No stored token or user');
+          console.log('ℹ️ AuthContext: No stored token');
         }
       } catch (err) {
         console.error('❌ AuthContext: Failed to initialize auth:', err);
@@ -128,7 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   // Listen for profile updates
@@ -144,16 +191,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener('userProfileUpdated', handleProfileUpdate);
-    return () => window.removeEventListener('userProfileUpdated', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('userProfileUpdated', handleProfileUpdate);
+    };
   }, []);
 
   const logout = () => {
+    console.log('🔓 AuthContext: Logout initiated');
+    
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      // Force clear ALL storage
+      try {
+        sessionStorage.clear();
+        localStorage.clear();
+        console.log('✅ All storage cleared');
+      } catch (e) {
+        console.error('Failed to clear storage:', e);
+        // Fallback: clear individually
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
+    
+    // Force reset state
     setToken(null);
     setUser(null);
+    setLoading(false);
+    
+    console.log('✅ Logout complete - state reset');
+  };
+
+  const refreshAuth = async () => {
+    console.log('🔄 AuthContext: Refreshing auth...');
+    let storedToken = sessionStorage.getItem('token');
+    if (!storedToken) {
+      storedToken = localStorage.getItem('token');
+    }
+    
+    if (storedToken) {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${storedToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'success' && data.user) {
+            setToken(storedToken);
+            setUser(data.user);
+            console.log('✅ Auth refreshed from backend');
+          }
+        } else if (response.status === 401) {
+          // Token expired
+          setToken(null);
+          setUser(null);
+          sessionStorage.clear();
+          localStorage.clear();
+        } else {
+          // Try to restore from storage
+          const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+          if (storedUser) {
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+            console.log('✅ Auth restored from storage');
+          }
+        }
+      } catch (err) {
+        console.error('Auth refresh error:', err);
+        // Keep token and restore user from storage
+        const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (storedUser) {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+        }
+      }
+    }
   };
 
   const value: AuthContextType = {
@@ -163,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!token && !!user,
     logout,
     setUser,
+    refreshAuth,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { CheckCircle2, AlertCircle, TrendingUp, Award, Info } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 
 function PredictPage() {
-  const { token } = useAuth();
+  const navigate = useNavigate();
+  const { token, user, loading: authLoading } = useAuth();
+  const { loading: isProtecting } = useProtectedRoute();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('academic');
@@ -46,9 +49,41 @@ function PredictPage() {
       toast.error('Please fill in all required fields');
       return;
     }
+    
+    // Validate CGPA range (0-10)
+    const cgpa = parseFloat(formData.cgpa);
+    if (cgpa < 0 || cgpa > 10) {
+      toast.error('CGPA must be between 0 and 10');
+      return;
+    }
+    
+    // Validate marks range (0-100)
+    const marks12 = parseFloat(formData['12th_marks']);
+    const marks10 = parseFloat(formData['10th_marks']);
+    if (marks12 < 0 || marks12 > 100 || marks10 < 0 || marks10 > 100) {
+      toast.error('12th and 10th marks must be between 0 and 100');
+      return;
+    }
+    
+    // Validate backlogs (non-negative)
+    const closedBacklogs = parseInt(formData.closed_backlogs);
+    const liveBacklogs = parseInt(formData.live_backlogs);
+    if (closedBacklogs < 0 || liveBacklogs < 0) {
+      toast.error('Backlogs cannot be negative');
+      return;
+    }
+    
+    // Validate companies count (non-negative)
+    const numCompanies = parseInt(formData.num_companies);
+    if (numCompanies < 0) {
+      toast.error('Number of companies cannot be negative');
+      return;
+    }
 
     setLoading(true);
     try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
@@ -58,25 +93,17 @@ function PredictPage() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch('http://localhost:5000/api/predict', {
+      const response = await fetch(`${API_URL}/api/predict`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          CGPA: parseFloat(formData.cgpa),
-          '12th_Marks': parseFloat(formData['12th_marks']),
-          '10th_Marks': parseFloat(formData['10th_marks']),
-          '12th_Board': formData['12th_board'],
-          '10th_Board': formData['10th_board'],
-          Closed_Backlogs: parseInt(formData.closed_backlogs),
-          Live_Backlogs: parseInt(formData.live_backlogs),
-          Academic_Trend: parseFloat(formData.academic_trend),
-          Has_Experience: parseInt(formData.has_experience),
-          Num_Companies: parseInt(formData.num_companies),
-          Has_Internship: parseInt(formData.has_internship),
-          Skills_Count: parseInt(formData.skills_count),
-          Projects_Count: parseInt(formData.projects_count),
-          Certifications_Count: parseInt(formData.certifications_count),
-          Is_Female: parseInt(formData.is_female),
+          cgpa: parseFloat(formData.cgpa),
+          marks_12: parseFloat(formData['12th_marks']),
+          marks_10: parseFloat(formData['10th_marks']),
+          closed_backlogs: parseInt(formData.closed_backlogs),
+          live_backlogs: parseInt(formData.live_backlogs),
+          num_companies: parseInt(formData.num_companies),
+          has_experience: parseInt(formData.has_experience),
         }),
       });
 
@@ -88,13 +115,44 @@ function PredictPage() {
       if (data.status === 'error') {
         throw new Error(data.message || 'Prediction failed');
       }
-      setResult(data);
+      
+      // Format response with percentage and recommendation
+      const formattedResult = {
+        ...data,
+        percentage: `${(data.probability * 100).toFixed(1)}%`,
+        timestamp: new Date().toISOString(),
+        recommendation: generateRecommendation(data.tier, data.probability, parseFloat(formData.cgpa))
+      };
+      
+      setResult(formattedResult);
       toast.success('Prediction completed!');
+      
+      // Check if profile is complete - if not, redirect to profile
+      // Profile is incomplete if name is empty
+      if (!user?.name || user.name.trim() === '') {
+        toast.info('Please complete your profile to continue');
+        setTimeout(() => {
+          navigate({ to: '/profile' });
+        }, 1500);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to get prediction');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper function to generate recommendation
+  const generateRecommendation = (tier: string, probability: number, cgpa: number): string => {
+    if (tier === 'Tier-1') {
+      return 'Excellent! You have a very high chance of placement. Focus on polishing your interview skills and domain expertise.';
+    } else if (tier === 'Tier-2') {
+      return 'Great! You have a good chance of placement. Work on building projects and gaining practical experience.';
+    } else if (tier === 'Tier-3') {
+      return 'Good opportunity ahead! Improve your technical skills, solve coding problems, and build more projects.';
+    } else {
+      return 'Keep improving! Focus on CGPA, gain work experience, and develop in-demand skills. Consider internships and open-source contributions.';
     }
   };
 

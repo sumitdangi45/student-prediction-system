@@ -28,7 +28,7 @@ const otpSchema = z.object({
 function AuthPage() {
   const { mode } = Route.useSearch();
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, refreshAuth } = useAuth();
   const [tab, setTab] = useState<"login" | "signup">(mode);
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
@@ -59,7 +59,8 @@ function AuthPage() {
     }
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/auth/send-otp", {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: parsed.data.email }),
@@ -88,17 +89,43 @@ function AuthPage() {
 
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/auth/verify-otp", {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp: parsedOtp.data.otp }),
       });
       const data = await response.json();
       if (data.status === "success") {
+        // Clear old data first
+        sessionStorage.clear();
+        localStorage.clear();
+        
+        // Store NEW token in both sessionStorage AND localStorage
+        sessionStorage.setItem("token", data.token);
         localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        
+        const userData = data.user || {
+          id: data.user_id,
+          email: data.email,
+          is_admin: data.is_admin,
+          is_new_user: data.is_new_user
+        };
+        sessionStorage.setItem("user", JSON.stringify(userData));
+        localStorage.setItem("user", JSON.stringify(userData));
+        
+        console.log("✅ Auth: Token stored - User logged in:", userData.email, "is_new_user:", userData.is_new_user);
         toast.success(data.message);
-        navigate({ to: "/dashboard" });
+        
+        // Refresh auth context with new token/user
+        await refreshAuth();
+        
+        // Redirect after small delay to ensure state is updated
+        setTimeout(() => {
+          // NEW users go to HOME, RETURNING users go to DASHBOARD
+          const redirectPath = userData.is_new_user ? "/" : "/dashboard";
+          navigate({ to: redirectPath });
+        }, 100);
       } else {
         toast.error(data.message || "Invalid OTP");
       }

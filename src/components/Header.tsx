@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Menu, X } from "lucide-react";
 import logo from "@/assets/logo.png";
 import avatar1 from "@/assets/student-1.jpg";
 import avatar2 from "@/assets/student-2.jpg";
@@ -19,6 +20,7 @@ export function Header() {
   const { user, isAuthenticated, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   console.log('🎨 Header: Render state', { loading, isAuthenticated, user: user?.email });
 
@@ -38,9 +40,11 @@ export function Header() {
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      
       if (token) {
-        await fetch("http://localhost:5000/api/auth/logout", {
+        await fetch(`${API_URL}/api/auth/logout`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
@@ -96,7 +100,7 @@ export function Header() {
               </button>
 
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-lg bg-card border border-border/50 shadow-lg overflow-hidden">
+                <div className="absolute right-0 mt-2 w-48 rounded-lg bg-card border border-border/50 shadow-lg overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-border/50">
                     <p className="text-sm font-medium truncate">{user.email}</p>
                     <p className="text-xs text-muted-foreground">
@@ -168,13 +172,6 @@ export function Header() {
             <>
               <Link
                 to="/auth"
-                search={{ mode: "login" }}
-                className="hidden sm:inline-flex items-center text-sm font-medium text-foreground hover:text-accent transition-colors px-4 py-2"
-              >
-                Login
-              </Link>
-              <Link
-                to="/auth"
                 search={{ mode: "signup" }}
                 className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground pl-2 pr-5 py-2 text-sm font-medium hover:bg-primary/90 transition-all hover:gap-3"
               >
@@ -186,8 +183,38 @@ export function Header() {
               </Link>
             </>
           )}
+          
+          {/* Mobile Menu Button */}
+          {!isAuthenticated && (
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Mobile Menu */}
+      {!isAuthenticated && mobileMenuOpen && (
+        <div className="md:hidden border-t border-border/50 bg-card/50 backdrop-blur-sm">
+          <nav className="px-6 py-4 space-y-3">
+            {nav.map((n) => (
+              <Link
+                key={n.to}
+                to={n.to}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-4 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                activeProps={{ className: "text-foreground font-medium bg-secondary/50" }}
+                activeOptions={{ exact: n.to === "/" }}
+              >
+                {n.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

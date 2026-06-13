@@ -13,6 +13,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SetupInitializer } from "@/components/SetupInitializer";
 
 function NotFoundComponent() {
   return (
@@ -91,6 +92,7 @@ function RootComponent() {
         </main>
         <Footer />
         <Toaster position="top-center" richColors />
+        <SetupInitializer />
       </QueryClientProvider>
     </AuthProvider>
   );

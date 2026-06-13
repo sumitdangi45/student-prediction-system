@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -34,16 +34,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Upload, Download, BarChart3, Users, TrendingUp, FileText } from "lucide-react";
+import { Upload, Download, BarChart3, Users, TrendingUp } from "lucide-react";
 
 interface StudentPrediction {
   _id: string;
   name?: string;
   email?: string;
+  phone?: string;
+  college?: string;
+  cgpa?: string | number;
   probability: number;
   tier: string;
   features: Record<string, number>;
   timestamp: string;
+  source?: 'batch' | 'user';
 }
 
 interface Analytics {
@@ -62,33 +66,56 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterTier, setFilterTier] = useState("all");
+  const [filterSource, setFilterSource] = useState<"all" | "batch" | "user">("all");
   const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchStudentData();
-  }, []);
+  }, [filterSource]);
 
   const fetchStudentData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      
+      if (!token) {
+        console.error("❌ No token found");
+        toast.error("No authentication token. Please login again.");
+        setLoading(false);
+        return;
+      }
+      
+      console.log("✅ Token found, fetching data...", { tokenLength: token.length, source: filterSource });
 
-      const response = await fetch("http://localhost:5000/api/admin/students", {
+      const url = filterSource === 'all' 
+        ? `${API_URL}/api/admin/students`
+        : `${API_URL}/api/admin/students?source=${filterSource}`;
+
+      const response = await fetch(url, {
+        method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
+      console.log("📡 Response status:", response.status);
+
       if (!response.ok) {
-        throw new Error("Failed to fetch student data");
+        const errorData = await response.json();
+        console.error("❌ API Error:", errorData);
+        throw new Error(errorData.message || "Failed to fetch student data");
       }
 
       const data = await response.json();
+      console.log("✅ Data received:", { studentCount: data.students?.length, source: filterSource });
       setStudents(data.students || []);
       setAnalytics(data.analytics);
     } catch (err) {
       console.error("Error fetching student data:", err);
-      toast.error("Failed to load student data");
+      toast.error(err instanceof Error ? err.message : "Failed to load student data");
     } finally {
       setLoading(false);
     }
@@ -100,11 +127,22 @@ export function AdminDashboard() {
 
     try {
       setUploading(true);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const fileName = file.name;
+      toast.loading(`Uploading ${fileName}...`);
+      
       const formData = new FormData();
       formData.append("file", file);
 
-      const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/admin/batch-predict", {
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      
+      if (!token) {
+        toast.error("Authentication token not found. Please login again.");
+        setUploading(false);
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/admin/batch-predict`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -113,24 +151,43 @@ export function AdminDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to process file");
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to process file");
       }
 
       const data = await response.json();
-      toast.success(`Processed ${data.processed} students successfully!`);
-      fetchStudentData();
+      
+      if (data.status === 'success') {
+        toast.dismiss();
+        toast.success(`✅ Processed ${data.processed}/${data.total} students! (${data.failed} failed)`);
+        console.log("✅ Batch upload complete:", data);
+        // Refresh data after a short delay to allow database to update
+        setTimeout(() => fetchStudentData(), 1000);
+      } else {
+        throw new Error(data.message || "Upload failed");
+      }
     } catch (err) {
       console.error("Error uploading file:", err);
-      toast.error("Failed to process file");
+      toast.dismiss();
+      toast.error(err instanceof Error ? err.message : "Failed to process file");
     } finally {
       setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleDownloadExcel = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/admin/export-excel", {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/api/admin/export-excel`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -156,6 +213,45 @@ export function AdminDashboard() {
     }
   };
 
+  const initSourceColumn = async () => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      
+      if (!token) {
+        toast.error("Authentication token not found.");
+        return;
+      }
+
+      toast.loading("Initializing source column...");
+
+      const response = await fetch(`${API_URL}/api/admin/init-source-column`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to initialize");
+      }
+
+      const data = await response.json();
+      toast.dismiss();
+      toast.success(`✅ ${data.message}`);
+      console.log("✅ Source column initialized:", data);
+      
+      // Refresh data after a short delay
+      setTimeout(() => fetchStudentData(), 1000);
+    } catch (err) {
+      console.error("Error initializing source:", err);
+      toast.dismiss();
+      toast.error(err instanceof Error ? err.message : "Failed to initialize source column");
+    }
+  };
+
   const filteredStudents = students.filter((student) => {
     const matchesSearch =
       (student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -176,7 +272,7 @@ export function AdminDashboard() {
 
   const cgpaDistribution = students.reduce(
     (acc, student) => {
-      const cgpa = Math.floor(student.features["Current Academics Aggregate Marks"] || 0);
+      const cgpa = Math.floor((student.features && student.features["Current Academics Aggregate Marks"]) || 0);
       const existing = acc.find((item) => item.cgpa === cgpa);
       if (existing) {
         existing.count += 1;
@@ -201,22 +297,32 @@ export function AdminDashboard() {
               </p>
             </div>
             <div className="flex gap-3">
-              <label className="cursor-pointer">
-                <Button disabled={uploading} className="gap-2">
-                  <Upload className="h-4 w-4" />
-                  {uploading ? "Uploading..." : "Upload Excel"}
-                </Button>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  disabled={uploading}
-                />
-              </label>
+              <Button 
+                onClick={handleUploadClick}
+                disabled={uploading} 
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                {uploading ? "Uploading..." : "Upload Excel"}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
               <Button onClick={handleDownloadExcel} variant="outline" className="gap-2">
                 <Download className="h-4 w-4" />
                 Download Data
+              </Button>
+              <Button 
+                onClick={initSourceColumn}
+                variant="secondary"
+                size="sm"
+                className="text-xs"
+              >
+                Initialize Source Column
               </Button>
             </div>
           </div>
@@ -505,13 +611,23 @@ export function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {/* Filters */}
-                <div className="flex gap-4 mb-6">
+                <div className="flex gap-4 mb-6 flex-wrap">
                   <Input
                     placeholder="Search by name or email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="flex-1"
+                    className="flex-1 min-w-64"
                   />
+                  <Select value={filterSource} onValueChange={(value: any) => setFilterSource(value)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter by source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      <SelectItem value="batch">Batch Upload</SelectItem>
+                      <SelectItem value="user">User Predictions</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={filterTier} onValueChange={setFilterTier}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter by tier" />
@@ -538,6 +654,8 @@ export function AdminDashboard() {
                         <TableRow>
                           <TableHead>Name</TableHead>
                           <TableHead>Email</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>College</TableHead>
                           <TableHead>CGPA</TableHead>
                           <TableHead>Probability</TableHead>
                           <TableHead>Tier</TableHead>
@@ -551,12 +669,10 @@ export function AdminDashboard() {
                               {student.name || "N/A"}
                             </TableCell>
                             <TableCell>{student.email || "N/A"}</TableCell>
+                            <TableCell>{student.phone || "-"}</TableCell>
+                            <TableCell>{student.college || "-"}</TableCell>
                             <TableCell>
-                              {(
-                                student.features[
-                                  "Current Academics Aggregate Marks"
-                                ] || 0
-                              ).toFixed(2)}
+                              {student.cgpa || "-"}
                             </TableCell>
                             <TableCell>
                               <span className="font-semibold">

@@ -6,10 +6,12 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Lightbulb, BookOpen, Code, Target, Calendar, Award, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 
 function RecommendationsPage() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, loading: authLoading } = useAuth();
+  const { loading: isProtecting } = useProtectedRoute();
   const search = useSearch({ from: '/recommendations' });
   const [loading, setLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<any>(null);
@@ -45,7 +47,8 @@ function RecommendationsPage() {
 
   const fetchUserProfile = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/profile', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/auth/profile`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -78,6 +81,7 @@ function RecommendationsPage() {
   const generateRecommendationsAuto = async (tier: string, cgpa: string) => {
     setLoading(true);
     try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
@@ -87,7 +91,7 @@ function RecommendationsPage() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch('http://localhost:5000/api/recommendations', {
+      const response = await fetch(`${API_URL}/api/recommendations`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -118,6 +122,7 @@ function RecommendationsPage() {
     
     setLoading(true);
     try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
@@ -127,7 +132,7 @@ function RecommendationsPage() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch('http://localhost:5000/api/recommendations', {
+      const response = await fetch(`${API_URL}/api/recommendations`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -302,13 +307,13 @@ function RecommendationsPage() {
 
                 <div className="prose prose-invert max-w-none">
                   <div className="space-y-4 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                    {recommendations.content}
+                    {recommendations.roadmap}
                   </div>
                 </div>
 
                 <div className="mt-8 pt-8 border-t border-border/50">
                   <p className="text-xs text-muted-foreground">
-                    Generated at {new Date(recommendations.timestamp).toLocaleString()}
+                    Generated at {new Date(recommendations.generated_at).toLocaleString()}
                   </p>
                 </div>
               </div>
